@@ -47,38 +47,81 @@ export async function fetchGitHubUser(username: string): Promise<GitHubUserData 
   }
 }
 
-export default function handler(req: any, res: any) {
-  if (req.method !== 'GET') {
-    return res.status(405).json({ error: 'Method not allowed' });
+export default async function handler(req: Request) {
+  // Handle CORS preflight requests
+  if (req.method === 'OPTIONS') {
+    return new Response(null, {
+      headers: {
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Methods': 'GET, OPTIONS',
+        'Access-Control-Allow-Headers': 'Content-Type',
+      },
+    });
   }
 
-  const username = req.query.username;
+  if (req.method !== 'GET') {
+    return new Response(JSON.stringify({ error: 'Method not allowed' }), {
+      status: 405,
+      headers: {
+        'Content-Type': 'application/json',
+        'Access-Control-Allow-Origin': '*',
+      },
+    });
+  }
+
+  const url = new URL(req.url);
+  const username = url.pathname.split('/').pop();
 
   if (!username) {
-    return res.status(400).json({ error: 'Username is required' });
+    return new Response(JSON.stringify({ error: 'Username is required' }), {
+      status: 400,
+      headers: {
+        'Content-Type': 'application/json',
+        'Access-Control-Allow-Origin': '*',
+      },
+    });
   }
 
-  fetchGitHubUser(username)
-    .then((userData) => {
-      if (!userData) {
-        return res.status(404).json({ error: 'User not found' });
-      }
-      res.status(200).json({
-        status: 'success',
-        data: {
-          user: userData,
-          meta: {
-            cached: cache.has(username),
-            timestamp: new Date().toISOString(),
-          }
+  try {
+    const userData = await fetchGitHubUser(username);
+    
+    if (!userData) {
+      return new Response(JSON.stringify({ error: 'User not found' }), {
+        status: 404,
+        headers: {
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*',
+        },
+      });
+    }
+
+    return new Response(JSON.stringify({
+      status: 'success',
+      data: {
+        user: userData,
+        meta: {
+          cached: cache.has(username),
+          timestamp: new Date().toISOString(),
         }
-      });
-    })
-    .catch((error) => {
-      res.status(500).json({
-        status: 'error',
-        error: 'Internal server error',
-        message: error.message
-      });
+      }
+    }), {
+      status: 200,
+      headers: {
+        'Content-Type': 'application/json',
+        'Access-Control-Allow-Origin': '*',
+      },
     });
+  } catch (error) {
+    return new Response(JSON.stringify({
+      status: 'error',
+      error: 'Internal server error',
+      message: error instanceof Error ? error.message : 'Unknown error'
+    }), {
+      status: 500,
+      headers: {
+        'Content-Type': 'application/json',
+        'Access-Control-Allow-Origin': '*',
+      },
+    });
+  }
 }
